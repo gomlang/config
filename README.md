@@ -144,5 +144,5 @@ provenance, bounds, alias isolation, real files, optional files, invalid reloads
 atomic replacement through inotify, cancellation and concurrent readers/reloads.
 The independent `consumer::config` exercises normal versioned resolution.
 
-Run `just ecosystem-test config` from the repository root. No Python helpers or
+Run `(cd ../verification && just ecosystem-test config)` from this library repository. No Python helpers or
 CI integration are required.

@@ -5,6 +5,6 @@ dependency. It combines typed defaults, TOML, environment entries and explicit
 CLI overrides, validates typed settings, queries field provenance, and checks
 that saved snapshots survive a live reload.
 
-Run `just ecosystem-test config` from the repository root once the module is
+Run `(cd ../../verification && just ecosystem-test config)` from the repository root once the module is
 registered with the native verifier. The consumer also runs through `goml test`
 and `goml run` using the verifier's isolated registry home.
