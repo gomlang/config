@@ -122,6 +122,17 @@ Parent directory invalidation is reported and requires recreating the watcher.
 `close()` is idempotent. `Live::last_error` records configuration reload errors;
 watch transport errors are returned by the watcher.
 
+`Live::reload_with(cancel)` returns `Result[task::WaitResult[Reload], Error]`.
+Waiting for another reload is cancellable, and cancellation is checked before
+building and immediately before publication. A cancelled candidate changes
+neither the current snapshot/revision nor `last_error`; a later reload can retry.
+Once publication starts it completes atomically. File reads and validation
+callbacks still run synchronously and must return before cancellation can be
+reported. `HotReload::poll_with` also uses cancellable reload admission and
+publication after receiving file events. A consumed event batch is not replayed
+after cancellation; explicitly reload or recreate the watch to resynchronize.
+`reload()` retains its existing blocking behavior.
+
 ## Bounds, scope and validation
 
 `Limits` bounds source count, source/total bytes, cumulative parsed nodes and

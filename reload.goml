@@ -57,7 +57,32 @@ impl Live {
     pub fn reload(self: Live) -> Result[Reload, Error] {
         let _ = self.reload_gate.recv();
         defer self.reload_gate.send(());
+        self.publish(self.builder.build())
+    }
+
+    pub fn reload_with(self: Live, cancel: task::CancelToken) -> Result[
+        task::WaitResult[Reload],
+        Error,
+    ] {
+        if cancel.is_cancelled() {
+            return Result::Ok(task::WaitResult::Cancelled)
+        }
+        select {
+            recv(cancel.done()) as _ => return Result::Ok(task::WaitResult::Cancelled),
+            recv(self.reload_gate) as _ => (),
+        }
+        defer self.reload_gate.send(());
+        if cancel.is_cancelled() {
+            return Result::Ok(task::WaitResult::Cancelled)
+        }
         let candidate = self.builder.build();
+        if cancel.is_cancelled() {
+            return Result::Ok(task::WaitResult::Cancelled)
+        }
+        self.publish(candidate).map(|result| task::WaitResult::Completed(result))
+    }
+
+    fn publish(self: Live, candidate: Result[Snapshot, Error]) -> Result[Reload, Error] {
         let old = live_state(self.state);
         match candidate {
             Err(error) => {
@@ -143,13 +168,34 @@ impl HotReload {
             |error| failure(ErrorKind::Watch, error.to_string()),
         )? {
             task::WaitResult::Cancelled => Result::Ok(task::WaitResult::Cancelled),
-            task::WaitResult::Completed(events) => self.process(events).map(
-                |value| task::WaitResult::Completed(value),
-            ),
+            task::WaitResult::Completed(events) => {
+                if self.changed(events)? {
+                    self.live.reload_with(cancel).map(
+                        |result| match result {
+                            task::WaitResult::Cancelled => task::WaitResult::Cancelled,
+                            task::WaitResult::Completed(value) => task::WaitResult::Completed(
+                                Option::Some(value),
+                            ),
+                        },
+                    )
+                } else if cancel.is_cancelled() {
+                    Result::Ok(task::WaitResult::Cancelled)
+                } else {
+                    Result::Ok(task::WaitResult::Completed(Option::None))
+                }
+            },
         }
     }
 
     fn process(self: HotReload, events: Vec[notify::Notice]) -> Result[Option[Reload], Error] {
+        if self.changed(events)? {
+            self.live.reload().map(|value| Option::Some(value))
+        } else {
+            Result::Ok(Option::None)
+        }
+    }
+
+    fn changed(self: HotReload, events: Vec[notify::Notice]) -> Result[bool, Error] {
         let mut changed = false;
         for event in events {
             match event {
@@ -178,11 +224,7 @@ impl HotReload {
                 ),
             }
         }
-        if changed {
-            self.live.reload().map(|value| Option::Some(value))
-        } else {
-            Result::Ok(Option::None)
-        }
+        Result::Ok(changed)
     }
 
     pub fn close(self: HotReload) -> Result[(), Error] {
