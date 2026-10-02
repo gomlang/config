@@ -1,0 +1,18 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn dynamic_source_reloads_through_published_interfaces() -> () {
+    let text = Ref::new("{\"value\":1}");
+    let source = config::Source::dynamic("remote", config::Format::Json, || Result::Ok(text.get()));
+    let live = testing::expect_ok(
+        config::Live::new(config::Builder::new().with_source(source)),
+        "live",
+    );
+    text.set("{\"value\":2}");
+    testing::assert(testing::expect_ok(live.reload(), "reload").changed);
+    let value: isize = testing::expect_ok(live.snapshot().decode_at("/value"), "decode");
+    testing::assert_eq(value, 2);
+}

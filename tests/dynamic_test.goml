@@ -1,0 +1,114 @@
+package tests;
+
+use ecosystem::config;
+use std::task;
+use std::testing;
+
+#[test]
+fn dynamic_sources_load_in_order_on_every_build_and_retain_provenance() -> () {
+    let calls = Ref::new(0);
+    let value = Ref::new("value = 1");
+    let dynamic = config::Source::dynamic(
+        "provider",
+        config::Format::Toml,
+        || {
+            calls.set(calls.get() + 1);
+            Result::Ok(value.get())
+        },
+    );
+    let builder = config::Builder::new().with_source(
+        config::Source::json("base", "{\"other\":true}"),
+    ).with_source(dynamic);
+    testing::assert_eq(calls.get(), 0);
+    let first = ok(builder.build());
+    testing::assert_eq(read_int(first, "/value"), 1);
+    value.set("value = 2");
+    let second = ok(builder.build());
+    testing::assert_eq(read_int(second, "/value"), 2);
+    testing::assert_eq(read_int(first, "/value"), 1);
+    testing::assert_eq(calls.get(), 2);
+    let origin = ok(second.origin("/value"));
+    testing::assert_eq(origin.source, "provider");
+    testing::assert_eq(origin.detail, "dynamic");
+    testing::assert(builder.files().is_empty());
+    let error = testing::expect_err(
+        builder.with_limits(config::Limits { max_source_bytes: 3, ..config::Limits::new() }).build(),
+        "bounds",
+    );
+    testing::assert_eq(error.kind, config::ErrorKind::Limit);
+}
+
+#[test]
+fn dynamic_failures_and_cancelled_candidates_preserve_last_good_snapshot() -> () {
+    let value = Ref::new("{\"value\":1}");
+    let failed = Ref::new(false);
+    let later = Ref::new(0);
+    let builder = config::Builder::new().with_source(
+        config::Source::dynamic(
+            "provider",
+            config::Format::Json,
+            || {
+                if failed.get() {
+                    Result::Err(
+                        config::Error::new(
+                            config::ErrorKind::Io,
+                            "/secret",
+                            config::Origin { source: "upstream", detail: "offline" },
+                            "provider unavailable",
+                        ),
+                    )
+                } else {
+                    Result::Ok(value.get())
+                }
+            },
+        ),
+    ).with_source(
+        config::Source::dynamic(
+            "later",
+            config::Format::Json,
+            || {
+                later.set(later.get() + 1);
+                Result::Ok("{}")
+            },
+        ),
+    );
+    let live = ok(config::Live::new(builder));
+    failed.set(true);
+    let error = testing::expect_err(live.reload(), "provider failure");
+    testing::assert_eq(error.origin.source, "upstream");
+    testing::assert_eq(error.path, "/secret");
+    testing::assert_eq(later.get(), 1);
+    testing::assert_eq(read_int(live.snapshot(), "/value"), 1);
+    testing::assert_eq(live.snapshot().revision(), 1);
+    failed.set(false);
+    value.set("{\"value\":2}");
+    testing::assert(ok(live.reload()).changed);
+    task::scope(
+        |scope| {
+            let armed = Ref::new(false);
+            let live = ok(
+                config::Live::new(
+                    config::Builder::new().with_source(
+                        config::Source::dynamic(
+                            "cancel",
+                            config::Format::Json,
+                            || {
+                                if armed.get() {
+                                    scope.cancel();
+                                }
+                                Result::Ok("{}")
+                            },
+                        ),
+                    ),
+                ),
+            );
+            armed.set(true);
+            match ok(live.reload_with(scope.token())) {
+                task::WaitResult::Cancelled => (),
+                _ => testing::fail("dynamic cancellation published"),
+            }
+            testing::assert_eq(live.snapshot().revision(), 1);
+            testing::assert_none(live.last_error());
+        },
+    );
+}
