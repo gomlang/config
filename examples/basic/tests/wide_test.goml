@@ -1,0 +1,20 @@
+package tests;
+
+use ecosystem::config;
+use std::task;
+use std::testing;
+
+#[test]
+fn cancellable_reload_crosses_package_boundary() -> () {
+    let live = testing::expect_ok(config::Live::new(config::Builder::new()), "live");
+    task::scope(
+        |scope| {
+            scope.cancel();
+            match testing::expect_ok(live.reload_with(scope.token()), "cancelled reload") {
+                task::WaitResult::Cancelled => (),
+                task::WaitResult::Completed(_) => testing::fail("cancelled publication"),
+            }
+        },
+    );
+    testing::assert_eq(live.snapshot().revision(), 1);
+}

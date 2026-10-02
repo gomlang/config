@@ -1,0 +1,137 @@
+package tests;
+
+use ecosystem::config;
+use std::task;
+use std::fs;
+use std::time;
+use std::testing;
+
+#[test]
+fn cancelled_reload_keeps_snapshot_revision_and_last_error() -> () {
+    let enabled = Ref::new(false);
+    task::scope(
+        |scope| {
+            let live = ok(
+                config::Live::new(
+                    config::Builder::new().validate_with(
+                        |_| {
+                            if enabled.get() {
+                                scope.cancel();
+                            }
+                            Result::Ok(())
+                        },
+                    ),
+                ),
+            );
+            enabled.set(true);
+            match ok(live.reload_with(scope.token())) {
+                task::WaitResult::Cancelled => (),
+                task::WaitResult::Completed(_) => testing::fail("cancelled reload published"),
+            }
+            testing::assert_eq(live.snapshot().revision(), 1);
+            testing::assert_none(live.last_error());
+            match ok(live.reload_with(scope.token())) {
+                task::WaitResult::Cancelled => (),
+                task::WaitResult::Completed(_) => testing::fail("already cancelled reload"),
+            }
+            enabled.set(false);
+            testing::assert_eq(ok(live.reload()).revision, 2);
+        },
+    );
+}
+
+#[test]
+fn cancellation_interrupts_reload_admission_while_validator_is_blocked() -> () {
+    let block = Channel::new(1);
+    let entered = Channel::new(1);
+    let release: Channel[()] = Channel::new(0);
+    let live = ok(
+        config::Live::new(
+            config::Builder::new().validate_with(
+                |_| {
+                    let wait = select {
+                        recv(block) as value => value.is_some(),
+                        default => false,
+                    };
+                    if wait {
+                        entered.send(());
+                        let _ = release.recv();
+                    }
+                    Result::Ok(())
+                },
+            ),
+        ),
+    );
+    task::scope(
+        |workers| {
+            block.send(());
+            let active = workers.spawn(|_| live.reload());
+            let _ = entered.recv();
+            task::scope(
+                |cancelled| {
+                    let started = Channel::new(1);
+                    let waiting = workers.spawn(
+                        |_| {
+                            started.send(());
+                            live.reload_with(cancelled.token())
+                        },
+                    );
+                    let _ = started.recv();
+                    cancelled.cancel();
+                    match ok(waiting.join()) {
+                        task::WaitResult::Cancelled => (),
+                        task::WaitResult::Completed(_) => testing::fail(
+                            "cancelled waiter published",
+                        ),
+                    }
+                    testing::assert_eq(live.snapshot().revision(), 1);
+                },
+            );
+            release.close();
+            testing::assert_eq(ok(active.join()).revision, 2);
+        },
+    );
+}
+
+#[test]
+fn hot_reload_cancellation_during_validation_keeps_last_good_snapshot() -> () {
+    let root = directory("cancel-publication");
+    defer {
+        let _ = fs::remove_dir_all(root);
+    };
+    let file = root + "/app.json";
+    write(file, "{\"value\":1}");
+    let enabled = Ref::new(false);
+    task::scope(
+        |scope| {
+            let live = ok(
+                config::Live::new(
+                    config::Builder::new().with_source(file_source(file, true)).validate_with(
+                        |_| {
+                            if enabled.get() {
+                                scope.cancel();
+                            }
+                            Result::Ok(())
+                        },
+                    ),
+                ),
+            );
+            let watch = ok(live.watch());
+            defer {
+                let _ = watch.close();
+            };
+            let revision = live.snapshot().revision();
+            enabled.set(true);
+            write(file, "{\"value\":2}");
+            match ok(watch.poll_with(scope.token(), time::Duration::from_seconds(2))) {
+                task::WaitResult::Cancelled => (),
+                task::WaitResult::Completed(_) => testing::fail("cancelled hot reload published"),
+            }
+            testing::assert_eq(live.snapshot().revision(), revision);
+            testing::assert_eq(read_int(live.snapshot(), "/value"), 1);
+            enabled.set(false);
+            testing::assert(ok(live.reload()).changed);
+            testing::assert_eq(read_int(live.snapshot(), "/value"), 2);
+        },
+    );
+}
