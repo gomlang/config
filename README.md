@@ -66,7 +66,7 @@ origin detail `dynamic`; callback errors are preserved unchanged. No callback
 runs at construction, and failure prevents loading later sources. A cancelled
 reload does not publish a callback result or replace the last-good snapshot.
 Dynamic sources are not filesystem watches; poll external changes and call
-`reload` explicitly, or combine them with file sources to reload the entire stack.
+`reload` explicitly, or combine them with file sources to reload the entire stack. A failed or panicking initial `Live.watch()` reload closes every newly registered watch before unwinding; the last published snapshot remains usable.
 
 Callbacks are synchronous, may be invoked concurrently by independent builders,
 and must synchronize their own state. They must not reenter the same Live's

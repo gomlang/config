@@ -114,12 +114,17 @@ impl Live {
             )
         }
         let watches = notify::WatchSet::new();
+        let transferred = Ref::new(false);
+        defer {
+            if !transferred.get() {
+                let _ = watches.close();
+            }
+        };
         let parents = Vec::new();
         for file in files {
             let parent = path::parent(file).unwrap_or(".");
             if !parents.contains(parent) {
                 if let Err(error) = watches.add(parent) {
-                    let _ = watches.close();
                     return Result::Err(
                         Error::new(
                             ErrorKind::Watch,
@@ -133,10 +138,8 @@ impl Live {
             }
         }
         let watch = HotReload { live: self, watches, files, parents };
-        if let Err(error) = self.reload() {
-            let _ = watch.close();
-            return Result::Err(error)
-        }
+        let _ = self.reload()?;
+        transferred.set(true);
         Result::Ok(watch)
     }
 }
