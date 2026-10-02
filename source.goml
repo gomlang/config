@@ -14,6 +14,7 @@ use std::unicode;
 
 enum SourceKind {
     Document(Format, string),
+    Dynamic(Format, () -> Result[string, Error]),
     File(Format, string, bool),
     Environment(EnvOptions, Option[Vec[(string, string)]]),
     Overrides(Vec[Override]),
@@ -48,6 +49,10 @@ impl Override {
 impl Source {
     pub fn json(name: string, input: string) -> Source {
         Source { name, kind: SourceKind::Document(Format::Json, input) }
+    }
+
+    pub fn dynamic(name: string, format: Format, load: () -> Result[string, Error]) -> Source {
+        Source { name, kind: SourceKind::Dynamic(format, load) }
     }
 
     pub fn toml(name: string, input: string) -> Source {
@@ -398,6 +403,16 @@ fn apply_source(
             input,
             format,
             origin,
+            limits,
+            arrays,
+            bytes,
+            nodes,
+        ),
+        SourceKind::Dynamic(format, load) => apply_document(
+            root,
+            load()?,
+            format,
+            Origin { detail: "dynamic", ..origin },
             limits,
             arrays,
             bytes,

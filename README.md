@@ -58,6 +58,21 @@ segments, duplicate mapped keys, and parent/child collisions within one
 environment source are errors. Selected entries are applied in sorted path
 order; operating-system environment order does not affect results.
 
+`Source::dynamic(name, format, load)` calls `load() -> Result[string, Error]`
+once on each build or reload, in source order. This supports caller-owned secret,
+remote, or generated document providers using the existing JSON/TOML parser,
+merge rules, limits, and validation. Parsed values carry the source name and
+origin detail `dynamic`; callback errors are preserved unchanged. No callback
+runs at construction, and failure prevents loading later sources. A cancelled
+reload does not publish a callback result or replace the last-good snapshot.
+Dynamic sources are not filesystem watches; poll external changes and call
+`reload` explicitly, or combine them with file sources to reload the entire stack.
+
+Callbacks are synchronous, may be invoked concurrently by independent builders,
+and must synchronize their own state. They must not reenter the same Live's
+reload methods. The returned document is bounded before parsing, but the callback
+owns any memory/I/O used to produce it and must cooperate with cancellation.
+
 ## Paths, typing and provenance
 
 Paths are JSON Pointers: `""` identifies the root, `/` an empty object key,
