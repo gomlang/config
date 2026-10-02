@@ -1,0 +1,61 @@
+package tests;
+
+use ecosystem::config;
+use std::fs;
+use std::os::linux::fd;
+use std::panic;
+use std::testing;
+use std::utf8;
+
+fn inotify_count() -> isize {
+    let mut count = 0;
+    for name in testing::expect_ok(fs::read_dir("/proc/self/fd"), "descriptors") {
+        if let Ok(value) = fd::readlink_at(fd::AT_FDCWD, "/proc/self/fd/" + name) {
+            if utf8::decode(value).unwrap_or("").contains("inotify") {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+#[test]
+fn dynamic_provider_panic_during_watch_setup_releases_registrations_and_reload_gate() -> () {
+    let root = directory("dynamic-watch-panic");
+    defer {
+        let _ = fs::remove_dir_all(root);
+    };
+    let file = root + "/app.json";
+    write(file, "{\"value\":1}");
+    let armed = Ref::new(false);
+    let live = ok(
+        config::Live::new(
+            config::Builder::new().with_source(file_source(file, true)).with_source(
+                config::Source::dynamic(
+                    "provider",
+                    config::Format::Json,
+                    || {
+                        if armed.get() {
+                            panic::raise("provider panic");
+                        }
+                        Result::Ok("{}")
+                    },
+                ),
+            ),
+        ),
+    );
+    armed.set(true);
+    let before = inotify_count();
+    for _ in 0..3 {
+        testing::assert_err(panic::catch(|| live.watch()));
+        testing::assert_eq(inotify_count(), before);
+        testing::assert_eq(live.snapshot().revision(), 1);
+        testing::assert_eq(read_int(live.snapshot(), "/value"), 1);
+        testing::assert_none(live.last_error());
+    }
+    armed.set(false);
+    let watch = ok(live.watch());
+    testing::assert_eq(live.snapshot().revision(), 2);
+    testing::assert_ok(watch.close());
+    testing::assert_eq(inotify_count(), before);
+}
