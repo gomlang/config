@@ -142,7 +142,20 @@ Native file loading and notifications currently target Linux.
 The native GoML tests cover type/merge/path errors, all source kinds, independent
 provenance, bounds, alias isolation, real files, optional files, invalid reloads,
 atomic replacement through inotify, cancellation and concurrent readers/reloads.
-The independent `consumer::config` exercises normal versioned resolution.
+The `examples/basic` example exercises the public API; `goml verify` checks it
+against an independent registry snapshot.
 
 Run `(cd ../verification && just ecosystem-test config)` from this library repository. No Python helpers or
 CI integration are required.
+
+## Development and examples
+
+Requires GoML 0.1.55 or newer. The `examples/basic/` example shares the root manifest. From the library root, run:
+
+```sh
+goml run --example basic
+goml test
+goml verify --timeout 300s
+```
+
+`goml test` builds the example and runs its tests. `goml verify` repeats the example checks as an independent module against an isolated registry snapshot. `(cd ../verification && just ecosystem-test config)` also retains the library-specific smoke and compatibility checks.
