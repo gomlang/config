@@ -92,6 +92,51 @@ fn toml_table_headers_do_not_accept_assignment_separators_between_quoted_names()
 }
 
 #[test]
+fn toml_dotted_keys_require_a_component_after_the_final_dot() -> () {
+    for input in[
+        "name.=1",
+        "\"name\".=1",
+        "\"name\". \t=1",
+        "[name.]\nvalue=1",
+        "[\"name\". \t]\nvalue=1",
+        "[parent.\"name\".]\nvalue=1",
+        "object={name.=1}",
+    ] {
+        let error = testing::expect_err(
+            config::Builder::new().with_source(config::Source::toml("dotted.toml", input)).build(),
+            "missing final dotted-key component",
+        );
+        testing::assert_eq(error.kind, config::ErrorKind::Parse);
+        testing::assert_eq(error.origin.source, "dotted.toml");
+    }
+}
+
+#[test]
+fn toml_quoted_empty_components_literal_dots_and_numeric_values_remain_distinct() -> () {
+    let snapshot = testing::expect_ok(
+        config::Builder::new().with_source(
+            config::Source::toml(
+                "valid.toml",
+                "\"name.\"=1\nroot.\"\"=2\nobject={'name.'=3}\nnumber=1.25\nitems=[4,5,]\n[\"table\".'']\nvalue=6\n",
+            ),
+        ).build(),
+        "complete dotted keys and values",
+    );
+    for (path, expected) in[
+        ("/name.", 1),
+        ("/root/", 2),
+        ("/object/name.", 3),
+        ("/items/1", 5),
+        ("/table//value", 6),
+    ] {
+        let value: isize = testing::expect_ok(snapshot.decode_at(path), "complete key");
+        testing::assert_eq(value, expected);
+    }
+    let number: f64 = testing::expect_ok(snapshot.decode_at("/number"), "floating value");
+    testing::assert_eq(number, 1.25);
+}
+
+#[test]
 fn toml_string_boundaries_allow_quoted_keys_containers_and_comments() -> () {
     let input = "\"parent\" . 'child' = \"one\" # \"ignored\"\nitems = [\"two\", 'three']\nobject = { \"key\" = 'four', 'other' = \"five\" }\n[\"section\" . 'nested']\nvalue = \"six\"\t# 'ignored'\n";
     let snapshot = testing::expect_ok(

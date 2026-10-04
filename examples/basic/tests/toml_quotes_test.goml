@@ -66,3 +66,14 @@ fn downstream_toml_table_headers_reject_quoted_assignments() -> () {
     );
     testing::assert_eq(error.kind, config::ErrorKind::Parse);
 }
+
+#[test]
+fn downstream_toml_dotted_keys_cannot_end_after_a_separator() -> () {
+    let error = testing::expect_err(
+        config::Builder::new().with_source(
+            config::Source::toml("app.toml", "[\"parent\".]\nvalue=1"),
+        ).build(),
+        "missing table-key component",
+    );
+    testing::assert_eq(error.kind, config::ErrorKind::Parse);
+}

@@ -203,6 +203,24 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 nesting -= 1;
             }
             if format == Format::Toml {
+                if key_position && (current == b'=' || current == b']') {
+                    let mut previous = index;
+                    while previous > 0
+                        && (input.byte_get(previous - 1) == b' '
+                            || input.byte_get(previous - 1) == b'\t') {
+                        previous -= 1;
+                    }
+                    if previous > 0 && input.byte_get(previous - 1) == b'.' {
+                        return Result::Err(
+                            Error::new(
+                                ErrorKind::Parse,
+                                "",
+                                origin,
+                                "TOML dotted key requires a final component",
+                            ),
+                        )
+                    }
+                }
                 if current == b'[' || current == b'{' {
                     containers.push((current, key_position));
                     if current == b'{' {

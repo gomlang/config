@@ -164,7 +164,8 @@ when that source is constructed, before builder limits apply.
 
 Configuration values use the JSON-compatible data model. TOML support inherits
 `std::toml`'s currently documented subset; multiline TOML strings return a parse
-error instead of being reinterpreted as single-line strings. Datetime literals
+error instead of being reinterpreted as single-line strings. Array and inline-table
+values currently must fit on one source line. Datetime literals
 and nonfinite numbers are not added here. There is no interpolation,
 secret provider, YAML/INI parser, automatic CLI flag discovery, or disk writing.
 Native file loading and notifications currently target Linux.
@@ -175,6 +176,7 @@ normal separators. Dot delimiters are accepted after quoted keys; equals
 delimiters require a root or inline-table assignment. String values require
 separators valid for their containing array or inline table; root values cannot
 continue after a comma.
+Dotted keys require a final component; an explicitly quoted empty component is valid.
 Raw C0 control characters other than tab and line endings, and DEL, are rejected
 throughout TOML documents, including strings and comments. Line endings must be
 LF or CRLF. Supported string escapes can still represent control characters.
