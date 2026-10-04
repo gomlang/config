@@ -166,6 +166,10 @@ and nonfinite numbers are not added here. There is no interpolation,
 secret provider, YAML/INI parser, automatic CLI flag discovery, or disk writing.
 Native file loading and notifications currently target Linux.
 
+The TOML preflight also rejects adjacent quoted tokens and non-delimiter text
+after strings. Quoted dotted keys, arrays, inline tables and comments retain their
+normal separators.
+
 The native GoML tests cover type/merge/path errors, all source kinds, independent
 provenance, bounds, alias isolation, real files, optional files, invalid reloads,
 atomic replacement through inotify, cancellation and concurrent readers/reloads.

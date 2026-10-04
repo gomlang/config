@@ -1,0 +1,45 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn toml_quoted_values_and_keys_reject_concatenated_tokens() -> () {
+    for input in[
+        "value = \"first\" \"second\"",
+        "value = 'first' 'second'",
+        "value = \"first\"junk\"second\"",
+        "value = \"first\"\"second\"",
+        "value = ['first' 'second']",
+        "value = { item = \"first\" \"second\" }",
+        "\"first\" \"second\" = 1",
+        "['first' 'second']\nvalue = 1",
+    ] {
+        let error = testing::expect_err(
+            config::Builder::new().with_source(config::Source::toml("invalid.toml", input)).build(),
+            "invalid TOML string boundary",
+        );
+        testing::assert_eq(error.kind, config::ErrorKind::Parse);
+        testing::assert_eq(error.origin.source, "invalid.toml");
+    }
+}
+
+#[test]
+fn toml_string_boundaries_allow_quoted_keys_containers_and_comments() -> () {
+    let input = "\"parent\" . 'child' = \"one\" # \"ignored\"\nitems = [\"two\", 'three']\nobject = { \"key\" = 'four', 'other' = \"five\" }\n[\"section\" . 'nested']\nvalue = \"six\"\t# 'ignored'\n";
+    let snapshot = testing::expect_ok(
+        config::Builder::new().with_source(config::Source::toml("valid.toml", input)).build(),
+        "supported TOML delimiters",
+    );
+    for (path, expected) in[
+        ("/parent/child", "one"),
+        ("/items/0", "two"),
+        ("/items/1", "three"),
+        ("/object/key", "four"),
+        ("/object/other", "five"),
+        ("/section/nested/value", "six"),
+    ] {
+        let value: string = testing::expect_ok(snapshot.decode_at(path), "string");
+        testing::assert_eq(value, expected);
+    }
+}

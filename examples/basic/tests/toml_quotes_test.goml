@@ -14,3 +14,14 @@ fn downstream_unsupported_multiline_toml_returns_a_parse_error() -> () {
         testing::assert_eq(error.origin.source, "app.toml");
     }
 }
+
+#[test]
+fn downstream_toml_does_not_concatenate_adjacent_quoted_values() -> () {
+    let error = testing::expect_err(
+        config::Builder::new().with_source(
+            config::Source::toml("app.toml", "message = \"first\" \"second\""),
+        ).build(),
+        "adjacent TOML strings",
+    );
+    testing::assert_eq(error.kind, config::ErrorKind::Parse);
+}

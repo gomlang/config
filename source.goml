@@ -106,10 +106,27 @@ fn charge(length: isize, limits: Limits, used: Ref[isize], origin: Origin) -> Re
 fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> Result[(), Error] {
     let mut index = 0;
     let mut quote: byte = 0;
+    let mut string_end = false;
     let mut nesting = 0;
     let mut dots = 0;
     while index < input.byte_len() {
         let current = input.byte_get(index);
+        if string_end {
+            if current == b' ' || current == b'\t' {
+                index += 1;
+                continue
+            }
+            if current != b'\n' && current != b'\r' && current != b'#' && current != b','
+                && current != b']'
+                && current != b'}'
+                && current != b'.'
+                && current != b'=' {
+                return Result::Err(
+                    Error::new(ErrorKind::Parse, "", origin, "unexpected text after TOML string"),
+                )
+            }
+            string_end = false;
+        }
         if quote != 0 {
             if quote == 34 && current == 92 {
                 index += 2;
@@ -117,6 +134,7 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
             }
             if current == quote {
                 quote = 0;
+                string_end = format == Format::Toml;
             }
         } else if current == 34 || format == Format::Toml && current == 39 {
             quote = current;
