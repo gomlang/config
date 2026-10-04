@@ -292,7 +292,7 @@ fn apply_overrides(
                 ),
             )
         }
-        result = update(result, parts, 0, value, arrays, "", origin)?;
+        result = update(result, parts, 0, value, arrays, "", origin, Ref::new(false))?;
         let _ = object_fields(result, "")?;
     }
     Result::Ok(result)

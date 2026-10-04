@@ -71,10 +71,14 @@ fn update(
     arrays: ArrayMerge,
     current: string,
     origin: Origin,
+    changed: Ref[bool],
 ) -> Result[Node, Error] {
     if position == parts.len() {
         return match value {
-            Some(value) => Result::Ok(merge(node, value, arrays)),
+            Some(value) => {
+                changed.set(true);
+                Result::Ok(merge(node, value, arrays))
+            },
             None => Result::Err(
                 Error::new(ErrorKind::Path, current, origin, "cannot remove configuration root"),
             ),
@@ -90,7 +94,9 @@ fn update(
             for (key, child) in fields {
                 if key == part {
                     found = true;
-                    if !(terminal && value.is_none()) {
+                    if terminal && value.is_none() {
+                        changed.set(true);
+                    } else {
                         result.push(
                             (
                                 key,
@@ -102,6 +108,7 @@ fn update(
                                     arrays,
                                     child_path,
                                     origin,
+                                    changed,
                                 )?,
                             ),
                         );
@@ -119,10 +126,17 @@ fn update(
                     arrays,
                     child_path,
                     origin,
+                    changed,
                 )?;
                 result.push((part, child));
             }
-            Result::Ok(Node { kind: Kind::Object(result), origin })
+            Result::Ok(
+                if changed.get() {
+                    Node { kind: Kind::Object(result), origin }
+                } else {
+                    node
+                },
+            )
         },
         Kind::Array(values) => {
             let index = array_index(
@@ -135,7 +149,9 @@ fn update(
             let result = Vec::new();
             for offset in 0..values.len() {
                 if offset == index {
-                    if !(terminal && value.is_none()) {
+                    if terminal && value.is_none() {
+                        changed.set(true);
+                    } else {
                         result.push(
                             update(
                                 values[offset],
@@ -145,6 +161,7 @@ fn update(
                                 arrays,
                                 child_path,
                                 origin,
+                                changed,
                             )?,
                         );
                     }
@@ -154,10 +171,17 @@ fn update(
             }
             if index == values.len() {
                 if let Some(value) = value {
+                    changed.set(true);
                     result.push(value);
                 }
             }
-            Result::Ok(Node { kind: Kind::Array(result), origin })
+            Result::Ok(
+                if changed.get() {
+                    Node { kind: Kind::Array(result), origin }
+                } else {
+                    node
+                },
+            )
         },
         _ => Result::Err(
             Error::new(ErrorKind::Type, current, node.origin, "path traverses a scalar value"),

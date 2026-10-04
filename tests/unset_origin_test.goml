@@ -1,0 +1,74 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+fn expect_same_origins(actual: config::Snapshot, expected: config::Snapshot) -> () {
+    testing::assert_eq(actual.origins().len(), expected.origins().len());
+    for (path, origin) in expected.origins() {
+        let current = testing::expect_ok(actual.origin(path), "origin");
+        testing::assert_eq(current.source, origin.source);
+        testing::assert_eq(current.detail, origin.detail);
+    }
+}
+
+#[test]
+fn absent_object_removals_preserve_all_value_origins() -> () {
+    let base = config::Builder::new().with_source(
+        config::Source::json("base", "{\"object\":{\"keep\":1},\"array\":[{\"keep\":2}]}"),
+    );
+    let expected = testing::expect_ok(base.build(), "base");
+    for path in["/missing", "/missing/child", "/object/missing", "/array/0/missing"] {
+        let actual = testing::expect_ok(
+            base.with_source(
+                config::Source::overrides(
+                    "absent",
+                    Vec::from_array([config::Override::unset(path)]),
+                ),
+            ).build(),
+            "absent removal",
+        );
+        testing::assert_eq(actual.json(), expected.json());
+        expect_same_origins(actual, expected);
+    }
+}
+
+#[test]
+fn absent_removals_preserve_the_origin_of_an_earlier_real_removal() -> () {
+    let base = config::Builder::new().with_source(
+        config::Source::json(
+            "base",
+            "{\"object\":{\"remove\":1,\"keep\":2},\"array\":[{\"keep\":3}]}",
+        ),
+    ).with_source(
+        config::Source::overrides(
+            "remove",
+            Vec::from_array([config::Override::unset("/object/remove")]),
+        ),
+    );
+    let expected = testing::expect_ok(base.build(), "actual removal");
+    testing::assert_eq(
+        testing::expect_ok(expected.origin("/object"), "changed object").source,
+        "remove",
+    );
+    testing::assert_eq(
+        testing::expect_ok(expected.origin("/object/keep"), "untouched value").source,
+        "base",
+    );
+    let actual = testing::expect_ok(
+        base.with_source(
+            config::Source::overrides(
+                "absent",
+                Vec::from_array(
+                    [
+                        config::Override::unset("/object/remove"),
+                        config::Override::unset("/array/0/missing"),
+                    ],
+                ),
+            ),
+        ).build(),
+        "absent removals",
+    );
+    testing::assert_eq(actual.json(), expected.json());
+    expect_same_origins(actual, expected);
+}

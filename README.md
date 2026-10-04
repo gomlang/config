@@ -80,8 +80,9 @@ Paths are JSON Pointers: `""` identifies the root, `/` an empty object key,
 Array indices must be canonical nonnegative decimals. A final `-` appends an
 override to an existing array. Creating missing paths creates objects, never
 guesses an array. Traversing a scalar or an out-of-range index is an error.
-Removing an absent object member is a no-op; array removal shifts later
-elements and retains their origins. Removing the root is rejected.
+Removing an absent object member is a no-op, preserving container origins as
+well as values. Array removal shifts later elements and retains their origins.
+Removing the root is rejected.
 
 `Snapshot::decode[T: Deserialize]` decodes the root; `decode_at[T]` decodes a
 subtree. Serde errors retain the requested pointer and source, with the standard

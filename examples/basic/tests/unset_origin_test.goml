@@ -1,0 +1,22 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn absent_override_does_not_replace_a_containers_source() -> () {
+    let snapshot = testing::expect_ok(
+        config::Builder::new().with_source(
+            config::Source::json("defaults", "{\"service\":{\"port\":80}}"),
+        ).with_source(
+            config::Source::overrides(
+                "CLI",
+                Vec::from_array([config::Override::unset("/service/missing")]),
+            ),
+        ).build(),
+        "configuration",
+    );
+    for path in["", "/service", "/service/port"] {
+        testing::assert_eq(testing::expect_ok(snapshot.origin(path), "source").source, "defaults");
+    }
+}
