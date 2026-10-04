@@ -104,6 +104,28 @@ fn charge(length: isize, limits: Limits, used: Ref[isize], origin: Origin) -> Re
 }
 
 fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> Result[(), Error] {
+    if format == Format::Toml {
+        for index in 0..input.byte_len() {
+            let current = input.byte_get(index);
+            if current < 32 && current != b'\t' && current != b'\n' && current != b'\r'
+                || current == 127 {
+                return Result::Err(
+                    Error::new(ErrorKind::Parse, "", origin, "invalid raw TOML control character"),
+                )
+            }
+            if current == b'\r'
+                && (index + 1 >= input.byte_len() || input.byte_get(index + 1) != b'\n') {
+                return Result::Err(
+                    Error::new(
+                        ErrorKind::Parse,
+                        "",
+                        origin,
+                        "TOML carriage return requires line feed",
+                    ),
+                )
+            }
+        }
+    }
     let mut index = 0;
     let mut quote: byte = 0;
     let mut string_end = false;

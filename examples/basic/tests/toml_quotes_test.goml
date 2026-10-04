@@ -43,3 +43,15 @@ fn downstream_toml_key_punctuation_does_not_join_string_values() -> () {
         testing::assert_eq(error.origin.source, "app.toml");
     }
 }
+
+#[test]
+fn downstream_toml_rejects_raw_controls_and_bare_carriage_returns() -> () {
+    for input in["value='a\u0000b'", "value=1 # hidden\u007f", "value=1\r"] {
+        let error = testing::expect_err(
+            config::Builder::new().with_source(config::Source::toml("app.toml", input)).build(),
+            "invalid raw TOML control",
+        );
+        testing::assert_eq(error.kind, config::ErrorKind::Parse);
+        testing::assert_eq(error.origin.source, "app.toml");
+    }
+}

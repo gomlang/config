@@ -174,6 +174,9 @@ after strings. Quoted dotted keys, arrays, inline tables and comments retain the
 normal separators. Dot and equals delimiters are accepted after quoted keys,
 including nested inline-table keys. String values require separators valid for
 their containing array or inline table; root values cannot continue after a comma.
+Raw C0 control characters other than tab and line endings, and DEL, are rejected
+throughout TOML documents, including strings and comments. Line endings must be
+LF or CRLF. Supported string escapes can still represent control characters.
 
 The native GoML tests cover type/merge/path errors, all source kinds, independent
 provenance, bounds, alias isolation, real files, optional files, invalid reloads,

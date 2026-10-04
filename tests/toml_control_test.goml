@@ -1,0 +1,73 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn toml_raw_control_characters_are_rejected_in_strings_keys_and_comments() -> () {
+    for code in 0..128 {
+        if code == 9 || code == 10 || code == 13 || (code >= 32 && code != 127) {
+            continue
+        }
+        let control = char_from_u32(code.to_u32()).unwrap_or('?').to_string();
+        for input in[
+            "value=\"a" + control + "b\"",
+            "value='a" + control + "b'",
+            "\"a" + control + "b\"=1",
+            "value=1 # a" + control + "b",
+        ] {
+            let error = testing::expect_err(
+                config::Builder::new().with_source(config::Source::toml("controls.toml", input)).build(),
+                "raw TOML control character",
+            );
+            testing::assert_eq(error.kind, config::ErrorKind::Parse);
+            testing::assert_eq(error.origin.source, "controls.toml");
+        }
+    }
+}
+
+#[test]
+fn toml_carriage_returns_require_a_following_line_feed() -> () {
+    for input in[
+        "\rvalue=1",
+        "value=1\r",
+        "value\r=1",
+        "value=\r1",
+        "value='a\rb'",
+        "value=\"a\rb\"",
+        "'a\rb'=1",
+        "value=1 # a\rb",
+        "value=1\r\r\n",
+    ] {
+        let error = testing::expect_err(
+            config::Builder::new().with_source(config::Source::toml("lines.toml", input)).build(),
+            "bare TOML carriage return",
+        );
+        testing::assert_eq(error.kind, config::ErrorKind::Parse);
+        testing::assert_eq(error.origin.source, "lines.toml");
+    }
+}
+
+#[test]
+fn toml_tabs_crlf_escaped_controls_and_non_ascii_literals_remain_valid() -> () {
+    let input = "\r\n# comment\ttext\r\n\"tab\tkey\" = 'a\tb'\r\nescaped = \"\\u0000\\b\\f\\r\\u001f\\u007f\"\r\nnon_ascii = '界\u0085'\r\n";
+    let snapshot = testing::expect_ok(
+        config::Builder::new().with_source(config::Source::toml("valid.toml", input)).build(),
+        "allowed TOML characters",
+    );
+    let tab: string = testing::expect_ok(snapshot.decode_at("/tab\tkey"), "tab key");
+    testing::assert_eq(tab, "a\tb");
+    let escaped: string = testing::expect_ok(snapshot.decode_at("/escaped"), "escaped controls");
+    testing::assert_eq(escaped, "\u0000\b\f\r\u001f\u007f");
+    let non_ascii: string = testing::expect_ok(
+        snapshot.decode_at("/non_ascii"),
+        "non-ASCII literal",
+    );
+    testing::assert_eq(non_ascii, "界\u0085");
+    let json = testing::expect_ok(
+        config::Builder::new().with_source(config::Source::json("valid.json", "\r{\"value\":1}\r")).build(),
+        "JSON carriage-return whitespace",
+    );
+    let value: isize = testing::expect_ok(json.decode_at("/value"), "JSON value");
+    testing::assert_eq(value, 1);
+}
