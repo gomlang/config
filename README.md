@@ -160,8 +160,9 @@ bounded as a whole. Serialization of user-supplied typed defaults takes place
 when that source is constructed, before builder limits apply.
 
 Configuration values use the JSON-compatible data model. TOML support inherits
-`std::toml`'s currently documented subset; multiline TOML strings, datetime
-literals and nonfinite numbers are not added here. There is no interpolation,
+`std::toml`'s currently documented subset; multiline TOML strings return a parse
+error instead of being reinterpreted as single-line strings. Datetime literals
+and nonfinite numbers are not added here. There is no interpolation,
 secret provider, YAML/INI parser, automatic CLI flag discovery, or disk writing.
 Native file loading and notifications currently target Linux.
 

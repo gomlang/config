@@ -106,7 +106,6 @@ fn charge(length: isize, limits: Limits, used: Ref[isize], origin: Origin) -> Re
 fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> Result[(), Error] {
     let mut index = 0;
     let mut quote: byte = 0;
-    let mut triple = false;
     let mut nesting = 0;
     let mut dots = 0;
     while index < input.byte_len() {
@@ -117,21 +116,21 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 continue
             }
             if current == quote {
-                if !triple {
-                    quote = 0;
-                } else if index + 2 < input.byte_len() && input.byte_get(index + 1) == quote
-                    && input.byte_get(index + 2) == quote {
-                    quote = 0;
-                    index += 2;
-                }
+                quote = 0;
             }
         } else if current == 34 || format == Format::Toml && current == 39 {
             quote = current;
-            triple = format == Format::Toml && index + 2 < input.byte_len()
+            if format == Format::Toml && index + 2 < input.byte_len()
                 && input.byte_get(index + 1) == quote
-                && input.byte_get(index + 2) == quote;
-            if triple {
-                index += 2;
+                && input.byte_get(index + 2) == quote {
+                return Result::Err(
+                    Error::new(
+                        ErrorKind::Parse,
+                        "",
+                        origin,
+                        "multiline TOML strings are not supported",
+                    ),
+                )
             }
         } else if format == Format::Toml && current == 35 {
             while index < input.byte_len() && input.byte_get(index) != 10 {

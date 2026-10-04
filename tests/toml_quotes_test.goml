@@ -1,0 +1,52 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn unsupported_toml_multiline_strings_fail_instead_of_changing_values() -> () {
+    for quote in["\"", "'"] {
+        for trailing in 0..3 {
+            let input = "value = " + quote.repeat(3) + "text" + quote.repeat(3 + trailing) + "\n# "
+                + quote
+                + "[[[[[[\nnext = 1\n";
+            let error = testing::expect_err(
+                config::Builder::new().with_limits(
+                    config::Limits { max_depth: 1, ..config::Limits::new() },
+                ).with_source(config::Source::toml("quotes", input)).build(),
+                "unsupported TOML multiline string",
+            );
+            testing::assert_eq(error.kind, config::ErrorKind::Parse);
+            testing::assert_eq(error.origin.source, "quotes");
+        }
+    }
+}
+
+#[test]
+fn toml_quote_sequences_inside_supported_strings_and_comments_remain_literal() -> () {
+    for (input, expected) in[
+        ("value = \"'''[[[\"\n", "'''[[["),
+        ("value = '\"\"\"[[['\n", "\"\"\"[[["),
+        ("value = \"\\\"\\\"\\\"\"\n", "\"\"\""),
+        ("# \"\"\"[[[\nvalue = 'ok'\n# '''[[[\n", "ok"),
+        ("value = ''\n", ""),
+        ("value = \"\"\n", ""),
+    ] {
+        let snapshot = testing::expect_ok(
+            config::Builder::new().with_limits(
+                config::Limits { max_depth: 1, ..config::Limits::new() },
+            ).with_source(config::Source::toml("quotes", input)).build(),
+            "supported TOML quotes",
+        );
+        let value: string = testing::expect_ok(snapshot.decode_at("/value"), "value");
+        testing::assert_eq(value, expected);
+    }
+    let json = testing::expect_ok(
+        config::Builder::new().with_source(
+            config::Source::json("JSON", "{\"value\":\"'''\\\"\\\"\\\"\"}"),
+        ).build(),
+        "JSON quote sequences",
+    );
+    let value: string = testing::expect_ok(json.decode_at("/value"), "JSON value");
+    testing::assert_eq(value, "'''\"\"\"");
+}

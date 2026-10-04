@@ -1,0 +1,16 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn downstream_unsupported_multiline_toml_returns_a_parse_error() -> () {
+    for input in["message = \"\"\"hello\"\"\"", "message = '''hello'''"] {
+        let error = testing::expect_err(
+            config::Builder::new().with_source(config::Source::toml("app.toml", input)).build(),
+            "unsupported multiline TOML",
+        );
+        testing::assert_eq(error.kind, config::ErrorKind::Parse);
+        testing::assert_eq(error.origin.source, "app.toml");
+    }
+}
