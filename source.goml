@@ -150,7 +150,8 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 || !string_key && current == b',' && (container == b'[' || container == b'{')
                 || current == b']' && container == b'['
                 || !string_key && current == b'}' && container == b'{'
-                || string_key && (current == b'.' || current == b'=');
+                || string_key && current == b'.'
+                || string_key && current == b'=' && (container == 0 || container == b'{');
             if !delimiter {
                 return Result::Err(
                     Error::new(ErrorKind::Parse, "", origin, "unexpected text after TOML string"),

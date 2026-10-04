@@ -55,3 +55,14 @@ fn downstream_toml_rejects_raw_controls_and_bare_carriage_returns() -> () {
         testing::assert_eq(error.origin.source, "app.toml");
     }
 }
+
+#[test]
+fn downstream_toml_table_headers_reject_quoted_assignments() -> () {
+    let error = testing::expect_err(
+        config::Builder::new().with_source(
+            config::Source::toml("app.toml", "[\"x\"=\"y\"]\nvalue=1"),
+        ).build(),
+        "table header assignment",
+    );
+    testing::assert_eq(error.kind, config::ErrorKind::Parse);
+}

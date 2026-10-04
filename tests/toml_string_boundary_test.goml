@@ -56,6 +56,42 @@ fn toml_quoted_key_positions_resume_after_nested_containers_and_comments() -> ()
 }
 
 #[test]
+fn toml_table_headers_do_not_accept_assignment_separators_between_quoted_names() -> () {
+    for input in[
+        "[\"x\"=\"y\"]\nx=1",
+        "['x'='y']\nx=1",
+        "[\"\"=\"y\"]\nx=1",
+        "[\"q\\\"x\"=\"y\"]\nx=1",
+        "[\"x\" = \"y\"]\nx=1",
+        "[\"x\".'y'='z']\nx=1",
+    ] {
+        let error = testing::expect_err(
+            config::Builder::new().with_source(config::Source::toml("header.toml", input)).build(),
+            "table header assignment separator",
+        );
+        testing::assert_eq(error.kind, config::ErrorKind::Parse);
+        testing::assert_eq(error.origin.source, "header.toml");
+    }
+    let snapshot = testing::expect_ok(
+        config::Builder::new().with_source(
+            config::Source::toml(
+                "keys.toml",
+                "\"top=key\"=1\nobject={'inline=key'=2}\n[\"table=name\".'nested=key']\n\"value=key\"=3\n",
+            ),
+        ).build(),
+        "equals signs inside quoted keys",
+    );
+    for (path, expected) in[
+        ("/top=key", 1),
+        ("/object/inline=key", 2),
+        ("/table=name/nested=key/value=key", 3),
+    ] {
+        let value: isize = testing::expect_ok(snapshot.decode_at(path), "quoted key value");
+        testing::assert_eq(value, expected);
+    }
+}
+
+#[test]
 fn toml_string_boundaries_allow_quoted_keys_containers_and_comments() -> () {
     let input = "\"parent\" . 'child' = \"one\" # \"ignored\"\nitems = [\"two\", 'three']\nobject = { \"key\" = 'four', 'other' = \"five\" }\n[\"section\" . 'nested']\nvalue = \"six\"\t# 'ignored'\n";
     let snapshot = testing::expect_ok(
