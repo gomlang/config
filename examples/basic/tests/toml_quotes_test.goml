@@ -25,3 +25,21 @@ fn downstream_toml_does_not_concatenate_adjacent_quoted_values() -> () {
     );
     testing::assert_eq(error.kind, config::ErrorKind::Parse);
 }
+
+#[test]
+fn downstream_toml_key_punctuation_does_not_join_string_values() -> () {
+    for input in[
+        "message = \"first\".\"second\"",
+        "message = { key = 'first'='second' }",
+        "message = \"first\",\"second\"",
+        "message = 'first']'second'",
+        "[\"first\",\"second\"]\nvalue = 1",
+    ] {
+        let error = testing::expect_err(
+            config::Builder::new().with_source(config::Source::toml("app.toml", input)).build(),
+            "key punctuation after a value",
+        );
+        testing::assert_eq(error.kind, config::ErrorKind::Parse);
+        testing::assert_eq(error.origin.source, "app.toml");
+    }
+}

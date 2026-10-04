@@ -107,6 +107,9 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
     let mut index = 0;
     let mut quote: byte = 0;
     let mut string_end = false;
+    let mut string_key = false;
+    let mut key_position = true;
+    let containers: Vec[(byte, bool)] = Vec::new();
     let mut nesting = 0;
     let mut dots = 0;
     while index < input.byte_len() {
@@ -116,11 +119,17 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 index += 1;
                 continue
             }
-            if current != b'\n' && current != b'\r' && current != b'#' && current != b','
-                && current != b']'
-                && current != b'}'
-                && current != b'.'
-                && current != b'=' {
+            let container: byte = if containers.is_empty() {
+                0
+            } else {
+                containers[containers.len() - 1].0
+            };
+            let delimiter = current == b'\n' || current == b'\r' || current == b'#'
+                || !string_key && current == b',' && (container == b'[' || container == b'{')
+                || current == b']' && container == b'['
+                || !string_key && current == b'}' && container == b'{'
+                || string_key && (current == b'.' || current == b'=');
+            if !delimiter {
                 return Result::Err(
                     Error::new(ErrorKind::Parse, "", origin, "unexpected text after TOML string"),
                 )
@@ -138,6 +147,7 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
             }
         } else if current == 34 || format == Format::Toml && current == 39 {
             quote = current;
+            string_key = key_position;
             if format == Format::Toml && index + 2 < input.byte_len()
                 && input.byte_get(index + 1) == quote
                 && input.byte_get(index + 2) == quote {
@@ -155,6 +165,9 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 index += 1;
             }
             dots = 0;
+            if containers.is_empty() {
+                key_position = true;
+            }
         } else {
             if current == 91 || current == 123 {
                 nesting += 1;
@@ -167,6 +180,23 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 nesting -= 1;
             }
             if format == Format::Toml {
+                if current == b'[' || current == b'{' {
+                    containers.push((current, key_position));
+                    if current == b'{' {
+                        key_position = true;
+                    }
+                } else if current == b']' || current == b'}' {
+                    if let Some((_, previous_key)) = containers.pop() {
+                        key_position = previous_key;
+                    }
+                } else if current == b'=' {
+                    key_position = false;
+                } else if current == b',' {
+                    key_position = !containers.is_empty()
+                        && containers[containers.len() - 1].0 == b'{';
+                } else if (current == b'\n' || current == b'\r') && containers.is_empty() {
+                    key_position = true;
+                }
                 if current == 46 {
                     dots += 1;
                     if dots > limits.max_depth {

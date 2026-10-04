@@ -171,7 +171,9 @@ Native file loading and notifications currently target Linux.
 
 The TOML preflight also rejects adjacent quoted tokens and non-delimiter text
 after strings. Quoted dotted keys, arrays, inline tables and comments retain their
-normal separators.
+normal separators. Dot and equals delimiters are accepted after quoted keys,
+including nested inline-table keys. String values require separators valid for
+their containing array or inline table; root values cannot continue after a comma.
 
 The native GoML tests cover type/merge/path errors, all source kinds, independent
 provenance, bounds, alias isolation, real files, optional files, invalid reloads,
