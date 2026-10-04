@@ -1,0 +1,74 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+fn environment_layer(name: string, key: string) -> config::Source {
+    config::Source::environment_values(
+        name,
+        config::EnvOptions::new("LONG_APP_"),
+        Vec::from_array([(key, "1")]),
+    )
+}
+
+#[test]
+fn total_environment_bytes_include_selected_variable_names() -> () {
+    let builder = config::Builder::new().with_source(environment_layer("env", "LONG_APP_A"));
+    testing::assert_ok(
+        builder.with_limits(config::Limits { max_total_bytes: 11, ..config::Limits::new() }).build(),
+    );
+    let error = testing::expect_err(
+        builder.with_limits(config::Limits { max_total_bytes: 10, ..config::Limits::new() }).build(),
+        "selected name and value exceed total",
+    );
+    testing::assert_eq(error.kind, config::ErrorKind::Limit);
+    testing::assert_eq(error.origin.source, "env");
+    testing::assert_eq(error.origin.detail, "LONG_APP_A");
+}
+
+#[test]
+fn unrelated_environment_entries_do_not_consume_source_or_total_bytes() -> () {
+    let source = config::Source::environment_values(
+        "env",
+        config::EnvOptions::new("LONG_APP_"),
+        Vec::from_array(
+            [("LONG_APP_A", "1"), ("UNRELATED_SETTING", "this is not configuration input")],
+        ),
+    );
+    let builder = config::Builder::new().with_source(source);
+    let limits = config::Limits {
+        max_source_bytes: 11,
+        max_total_bytes: 11,
+        ..config::Limits::new(),
+    };
+    let snapshot = testing::expect_ok(
+        builder.with_limits(limits).build(),
+        "exact selected input budget",
+    );
+    testing::assert_eq(snapshot.json(), "{\"a\":1}");
+    testing::assert_err(
+        builder.with_limits(config::Limits { max_source_bytes: 10, ..limits }).build(),
+    );
+}
+
+#[test]
+fn environment_bytes_share_the_total_budget_with_other_sources() -> () {
+    let environment = config::Builder::new().with_source(environment_layer("first", "LONG_APP_A")).with_source(
+        environment_layer("second", "LONG_APP_B"),
+    );
+    testing::assert_ok(
+        environment.with_limits(config::Limits { max_total_bytes: 22, ..config::Limits::new() }).build(),
+    );
+    testing::assert_err(
+        environment.with_limits(config::Limits { max_total_bytes: 21, ..config::Limits::new() }).build(),
+    );
+    let mixed = config::Builder::new().with_source(config::Source::json("base", "{}")).with_source(
+        environment_layer("env", "LONG_APP_A"),
+    );
+    testing::assert_ok(
+        mixed.with_limits(config::Limits { max_total_bytes: 13, ..config::Limits::new() }).build(),
+    );
+    testing::assert_err(
+        mixed.with_limits(config::Limits { max_total_bytes: 12, ..config::Limits::new() }).build(),
+    );
+}

@@ -1,0 +1,26 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn downstream_environment_prefixes_count_toward_total_bytes() -> () {
+    let builder = config::Builder::new().with_source(
+        config::Source::environment_values(
+            "env",
+            config::EnvOptions::new("LONG_APP_"),
+            Vec::from_array([("LONG_APP_A", "1")]),
+        ),
+    );
+    let snapshot = testing::expect_ok(
+        builder.with_limits(config::Limits { max_total_bytes: 11, ..config::Limits::new() }).build(),
+        "exact source input budget",
+    );
+    testing::assert_eq(snapshot.json(), "{\"a\":1}");
+    let error = testing::expect_err(
+        builder.with_limits(config::Limits { max_total_bytes: 10, ..config::Limits::new() }).build(),
+        "prefix counts in budget",
+    );
+    testing::assert_eq(error.kind, config::ErrorKind::Limit);
+    testing::assert_eq(error.origin.source, "env");
+}

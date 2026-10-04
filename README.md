@@ -157,7 +157,9 @@ merged nodes, and nesting depth. Defaults are 128 sources, 1 MiB per source,
 Text nesting is checked before invoking recursive parsers. TOML also bounds
 unquoted dotted-key segments. Byte/node limits include overridden source data,
 so many discarded layers cannot bypass them. Override/environment sources are
-bounded as a whole. Serialization of user-supplied typed defaults takes place
+bounded as a whole. Environment byte accounting uses the original selected
+variable names (including prefixes) and values, once each; unrelated variables
+do not consume the budget. Serialization of user-supplied typed defaults takes place
 when that source is constructed, before builder limits apply.
 
 Configuration values use the JSON-compatible data model. TOML support inherits

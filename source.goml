@@ -251,6 +251,34 @@ fn apply_document(
     Result::Ok(merge(root, node, arrays))
 }
 
+fn apply_override(
+    root: Node,
+    item: Override,
+    origin: Origin,
+    limits: Limits,
+    arrays: ArrayMerge,
+    nodes: Ref[isize],
+) -> Result[Node, Error] {
+    let parts = pointer(item.pointer).map_err(|error| Error { origin, ..error })?;
+    if parts.len() > limits.max_depth {
+        return Result::Err(
+            Error::new(ErrorKind::Limit, item.pointer, origin, "path depth limit exceeded"),
+        )
+    }
+    let value = match item.value {
+        Some((value, mode)) => {
+            let parsed = parse_override(value, mode, limits, origin).map_err(
+                |error| Error { path: item.pointer, ..error },
+            )?;
+            Option::Some(json_node(parsed, origin, item.pointer, parts.len(), limits, nodes)?)
+        },
+        None => Option::None,
+    };
+    let result = update(root, parts, 0, value, arrays, "", origin, Ref::new(false))?;
+    let _ = object_fields(result, "")?;
+    Result::Ok(result)
+}
+
 fn apply_overrides(
     root: Node,
     values: Vec[Override],
@@ -263,25 +291,14 @@ fn apply_overrides(
     let mut result = root;
     let start = bytes.get();
     for item in values {
-        let parts = pointer(item.pointer).map_err(|error| Error { origin, ..error })?;
-        if parts.len() > limits.max_depth {
-            return Result::Err(
-                Error::new(ErrorKind::Limit, item.pointer, origin, "path depth limit exceeded"),
-            )
-        }
-        let value = match item.value {
-            Some((value, mode)) => {
+        match item.value {
+            Some((value, _)) => {
                 charge(value.byte_len() + item.pointer.byte_len(), limits, bytes, origin)?;
-                let parsed = parse_override(value, mode, limits, origin).map_err(
-                    |error| Error { path: item.pointer, ..error },
-                )?;
-                Option::Some(json_node(parsed, origin, item.pointer, parts.len(), limits, nodes)?)
             },
             None => {
                 charge(item.pointer.byte_len(), limits, bytes, origin)?;
-                Option::None
             },
-        };
+        }
         if bytes.get() - start > limits.max_source_bytes {
             return Result::Err(
                 Error::new(
@@ -292,8 +309,7 @@ fn apply_overrides(
                 ),
             )
         }
-        result = update(result, parts, 0, value, arrays, "", origin, Ref::new(false))?;
-        let _ = object_fields(result, "")?;
+        result = apply_override(result, item, origin, limits, arrays, nodes)?;
     }
     Result::Ok(result)
 }
@@ -303,6 +319,7 @@ fn environment_overrides(
     entries: Vec[(string, string)],
     origin: Origin,
     limits: Limits,
+    bytes: Ref[isize],
 ) -> Result[Vec[(Override, Origin)], Error] {
     if options.separator == "" {
         return Result::Err(
@@ -334,6 +351,9 @@ fn environment_overrides(
             )
         }
         byte_count += value.byte_len();
+        let entry_origin = Origin { detail: name, ..origin };
+        charge(name.byte_len(), limits, bytes, entry_origin)?;
+        charge(value.byte_len(), limits, bytes, entry_origin)?;
         let tail = name.byte_slice(options.prefix.byte_len(), name.byte_len());
         let parts = text::split(tail, options.separator);
         if parts.len() > limits.max_depth || result.len() >= limits.max_nodes {
@@ -462,29 +482,10 @@ fn apply_source(
         ),
         SourceKind::Environment(options, values) => {
             let entries = values.unwrap_or_else(|| env::vars());
-            let mapped = environment_overrides(options, entries, origin, limits)?;
+            let mapped = environment_overrides(options, entries, origin, limits, bytes)?;
             let mut result = root;
-            let start = bytes.get();
             for (item, origin) in mapped {
-                result = apply_overrides(
-                    result,
-                    Vec::from_array([item]),
-                    origin,
-                    limits,
-                    arrays,
-                    bytes,
-                    nodes,
-                )?;
-                if bytes.get() - start > limits.max_source_bytes {
-                    return Result::Err(
-                        Error::new(
-                            ErrorKind::Limit,
-                            "",
-                            origin,
-                            "environment source byte limit exceeded",
-                        ),
-                    )
-                }
+                result = apply_override(result, item, origin, limits, arrays, nodes)?;
             }
             Result::Ok(result)
         },
