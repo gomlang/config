@@ -1,7 +1,7 @@
 # config
 
 Layered, typed configuration implemented in GoML. JSON and TOML use the standard
-format libraries; file notifications use `ecosystem::notify = "0.1.0"`.
+format libraries; file notifications use `ecosystem::notify = true`.
 
 ```goml
 use ecosystem::config;
@@ -184,20 +184,20 @@ LF or CRLF. Supported string escapes can still represent control characters.
 The native GoML tests cover type/merge/path errors, all source kinds, independent
 provenance, bounds, alias isolation, real files, optional files, invalid reloads,
 atomic replacement through inotify, cancellation and concurrent readers/reloads.
-The `examples/basic` example exercises the public API; `goml verify` checks it
-against an independent registry snapshot.
+The `examples/basic` example exercises the public API; the ecosystem verifier checks it
+using an isolated registry snapshot.
 
 Run `(cd ../verification && just ecosystem-test config)` from this library repository. No Python helpers or
 CI integration are required.
 
 ## Development and examples
 
-Requires GoML 0.1.56 or newer. The `examples/basic/` example shares the root manifest. From the library root, run:
+Requires the [current GoML toolchain](https://github.com/gomlang/verification/blob/main/ci/toolchain.json) with unversioned registry support. The `examples/basic/` example shares the root manifest. From the library root, run:
 
 ```sh
 goml run --example basic
 goml test
-goml verify --timeout 300s
+(cd ../verification && just ecosystem-test config)
 ```
 
-`goml test` builds the example and runs its tests. `goml verify` repeats the example checks as an independent module against an isolated registry snapshot. `(cd ../verification && just ecosystem-test config)` also retains the library-specific smoke and compatibility checks.
+`goml test` builds the example and runs its tests. `(cd ../verification && just ecosystem-test config)` runs the library-specific smoke and compatibility checks.

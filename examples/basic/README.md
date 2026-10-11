@@ -7,4 +7,4 @@ that saved snapshots survive a live reload.
 Run `(cd ../../../verification && just ecosystem-test config)` from this example directory. The example also runs through `goml test`
 and `goml run --example basic` using the verifier's isolated registry home.
 
-This example shares the library root manifest and development dependencies. Run `goml verify --example basic` to build and test it as an independent downstream module.
+This example shares the library root manifest and development dependencies. Run `goml test` to build and test the library and its examples.
