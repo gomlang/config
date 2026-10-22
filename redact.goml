@@ -1,0 +1,73 @@
+package config;
+
+use std::json;
+use std::collections;
+
+fn redacted_value(node: Node, path: string, selected: HashMap[string, bool]) -> json::Value {
+    if selected.contains(path) {
+        return json::Value::String("[REDACTED]")
+    }
+    match node.kind {
+        Kind::Array(values) => {
+            let result = Vec::new();
+            let mut index = 0;
+            for value in values {
+                result.push(redacted_value(value, path_join(path, index.to_string()), selected));
+                index += 1;
+            }
+            json::Value::Array(result)
+        },
+        Kind::Object(fields) => {
+            let result = Vec::new();
+            for (key, value) in fields {
+                result.push((key, redacted_value(value, path_join(path, key), selected)));
+            }
+            collections::stable_sort_by(
+                result,
+                |a, b| if a.0 < b.0 {
+                    -1
+                } else if a.0 == b.0 {
+                    0
+                } else {
+                    1
+                },
+            );
+            json::Value::Object(result)
+        },
+        _ => node_json(node),
+    }
+}
+
+impl Snapshot {
+    pub fn redacted_json(self: Snapshot, paths: Vec[string], max_output_bytes: isize) -> Result[
+        string,
+        Error,
+    ] {
+        if max_output_bytes < 0 {
+            return Result::Err(
+                failure(ErrorKind::InvalidOptions, "redacted output limit must be nonnegative"),
+            )
+        }
+        if paths.len() > 100000 {
+            return Result::Err(failure(ErrorKind::Limit, "too many redaction pointers"))
+        }
+        let selected = HashMap::new();
+        let mut bytes = 0;
+        for path in paths {
+            if path.byte_len() > 4194304 - bytes {
+                return Result::Err(
+                    failure(ErrorKind::Limit, "redaction pointers exceed byte limit"),
+                )
+            }
+            bytes += path.byte_len();
+            let parts = pointer(path)?;
+            let _ = lookup(self.root, parts, 0, "")?;
+            selected.set(path, true);
+        }
+        let result = json::encode(redacted_value(self.root, "", selected));
+        if result.byte_len() > max_output_bytes {
+            return Result::Err(failure(ErrorKind::Limit, "redacted JSON exceeds output limit"))
+        }
+        Result::Ok(result)
+    }
+}

@@ -461,3 +461,98 @@ fn source_limits_apply_across_override_entries_and_environment_values() -> () {
     let right = build("{\"a\":{\"c\":3,\"d\":4},\"b\":2}");
     testing::assert_eq(left.json(), right.json());
 }
+
+#[test]
+fn array_updates_across_vector_nodes_preserve_siblings_and_origins() -> () {
+    let items = Vec::new();
+    for index in 0..70 {
+        items.push(Vec::from_array([index, index + 100]));
+    }
+    let base = config::Builder::new().with_source(
+        config::Source::overrides(
+            "base",
+            Vec::from_array([ok(config::Override::value("/items", items))]),
+        ),
+    );
+    let saved = ok(base.build());
+    let changed = ok(
+        base.with_source(
+            config::Source::overrides(
+                "branch",
+                Vec::from_array(
+                    [
+                        ok(config::Override::value("/items/32/0", 999)),
+                        ok(config::Override::value("/items/-", Vec::from_array([70, 170]))),
+                        config::Override::unset("/items/31"),
+                    ],
+                ),
+            ),
+        ).build(),
+    );
+    testing::assert_eq(read_int(changed, "/items/30/0"), 30);
+    testing::assert_eq(read_int(changed, "/items/31/0"), 999);
+    testing::assert_eq(read_int(changed, "/items/31/1"), 132);
+    testing::assert_eq(read_int(changed, "/items/32/0"), 33);
+    testing::assert_eq(read_int(changed, "/items/69/0"), 70);
+    testing::assert_eq(ok(changed.origin("/items/31/0")).source, "branch");
+    testing::assert_eq(ok(changed.origin("/items/31/1")).source, "base");
+    testing::assert_eq(read_int(saved, "/items/32/0"), 32);
+    testing::assert_eq(read_int(saved, "/items/69/0"), 69);
+    testing::assert_eq(ok(saved.origin("/items/32/0")).source, "base");
+    let appended = ok(
+        base.with_arrays(config::ArrayMerge::Append).with_source(
+            config::Source::overrides(
+                "append",
+                Vec::from_array(
+                    [
+                        ok(
+                            config::Override::value(
+                                "/items",
+                                Vec::from_array([Vec::from_array([70, 170])]),
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        ).build(),
+    );
+    testing::assert_eq(read_int(appended, "/items/70/0"), 70);
+    testing::assert_eq(read_int(appended, "/items/32/0"), 32);
+    testing::assert_eq(ok(appended.origin("/items/32")).source, "base");
+    testing::assert_eq(ok(appended.origin("/items/70")).source, "append");
+    kind(saved.get("/items/70"), config::ErrorKind::Missing);
+}
+
+#[test]
+fn builder_branches_retain_source_and_validator_order_across_vector_nodes() -> () {
+    let calls = Vec::new();
+    let mut base = config::Builder::new();
+    for index in 0..40 {
+        base = base.with_source(
+            config::Source::overrides(
+                index.to_string(),
+                Vec::from_array([ok(config::Override::value("/value", index))]),
+            ),
+        ).validate_with(
+            |_| {
+                calls.push(index);
+                Result::Ok(())
+            },
+        );
+    }
+    let branch = base.with_source(config::Source::json("branch", "{\"value\":99}")).validate_with(
+        |_| {
+            calls.push(40);
+            Result::Ok(())
+        },
+    );
+    testing::assert_eq(read_int(ok(branch.build()), "/value"), 99);
+    testing::assert_eq(read_int(ok(base.build()), "/value"), 39);
+    testing::assert_eq(calls.len(), 81);
+    for index in 0..41 {
+        testing::assert_eq(calls[index], index);
+    }
+    for index in 0..40 {
+        testing::assert_eq(calls[index + 41], index);
+    }
+}

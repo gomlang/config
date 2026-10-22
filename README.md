@@ -104,6 +104,12 @@ sorted object keys. Builder copies, captured input vectors, and snapshots do not
 share publicly mutable storage. User-defined Serde implementations and validator
 callbacks remain responsible for their own external state.
 
+Builder source/validator sequences and internal configuration arrays use
+`std::collections::imm::Vector`. Branching a builder, appending array elements,
+and replacing an indexed element share unchanged vector nodes instead of copying
+entire sequences. Array removal still rebuilds the shifted sequence. Object
+members retain insertion order, including the traversal order of `origins()`.
+
 ## Reload and notifications
 
 `Live::new(builder)` validates an initial snapshot at revision 1. `reload()`
@@ -201,3 +207,14 @@ goml test
 ```
 
 `goml test` builds the example and runs its tests. `(cd ../workflows && just ecosystem-test config)` runs the library-specific smoke and compatibility checks.
+
+`Snapshot.redacted_json(paths, max_output_bytes)` exports JSON with explicitly
+selected JSON Pointer values replaced by the string `[REDACTED]`. Root, arrays,
+and `~0`/`~1` escaping follow the existing lookup rules. All paths are validated
+against the original snapshot before export: missing paths fail, even beneath
+another selected ancestor. Duplicate paths are harmless and ancestors dominate
+descendants regardless of input order. The snapshot, origins and typed decoding
+remain unchanged. The encoded output must fit the explicit nonnegative byte
+limit; path input is capped at 100,000 pointers and 4 MiB combined UTF-8 bytes.
+This convenience API materializes an export copy within the snapshot's existing
+construction bounds before checking the encoded output limit.

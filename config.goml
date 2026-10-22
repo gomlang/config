@@ -2,6 +2,7 @@ package config;
 
 use std::json;
 use std::serde;
+use std::collections::imm;
 
 pub struct Snapshot {
     root: Node,
@@ -61,25 +62,24 @@ impl Snapshot {
 }
 
 pub struct Builder {
-    sources: Vec[Source],
+    sources: imm::Vector[Source],
     arrays: ArrayMerge,
     limits: Limits,
-    validators: Vec[(Snapshot) -> Result[(), Error]],
+    validators: imm::Vector[(Snapshot) -> Result[(), Error]],
 }
 
 impl Builder {
     pub fn new() -> Builder {
         Builder {
-            sources: Vec::new(),
+            sources: imm::Vector::new(),
             arrays: ArrayMerge::Replace,
             limits: Limits::new(),
-            validators: Vec::new(),
+            validators: imm::Vector::new(),
         }
     }
 
     pub fn with_source(self: Builder, source: Source) -> Builder {
-        let sources = self.sources.as_slice().to_vec();
-        sources.push(source);
+        let sources = self.sources.push(source);
         Builder { sources, ..self }
     }
 
@@ -92,8 +92,7 @@ impl Builder {
     }
 
     pub fn validate_with(self: Builder, validator: (Snapshot) -> Result[(), Error]) -> Builder {
-        let validators = self.validators.as_slice().to_vec();
-        validators.push(validator);
+        let validators = self.validators.push(validator);
         Builder { validators, ..self }
     }
 

@@ -3,6 +3,7 @@ package config;
 use std::json;
 use std::text;
 use std::collections;
+use std::collections::imm;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ErrorKind {
@@ -119,7 +120,7 @@ enum Kind {
     Bool(bool),
     Number(string),
     String(string),
-    Array(Vec[Node]),
+    Array(imm::Vector[Node]),
     Object(Vec[(string, Node)]),
 }
 
@@ -207,7 +208,7 @@ fn json_node(
                     )?,
                 );
             }
-            Kind::Array(result)
+            Kind::Array(imm::Vector::from_vec(result))
         },
         json::Value::Object(fields) => {
             let result = Vec::new();

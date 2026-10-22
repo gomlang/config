@@ -1,0 +1,39 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn redacted_exports_validate_original_paths_and_preserve_snapshot() -> () {
+    let snapshot = build(
+        "{\"secret\":{\"password\":\"value\"},\"items\":[1,2],\"a/b\":{\"~\":true}}",
+    );
+    let original = snapshot.json();
+    let paths = Vec::from_array(["/secret/password", "/items/1", "/a~1b/~0"]);
+    let redacted = ok(snapshot.redacted_json(paths, 1000));
+    testing::assert_eq(
+        redacted,
+        "{\"a/b\":{\"~\":\"[REDACTED]\"},\"items\":[1,\"[REDACTED]\"],\"secret\":{\"password\":\"[REDACTED]\"}}",
+    );
+    testing::assert_eq(snapshot.json(), original);
+    testing::assert_eq(
+        ok(
+            snapshot.redacted_json(
+                Vec::from_array(["/secret", "/secret/password", "/secret"]),
+                1000,
+            ),
+        ),
+        ok(snapshot.redacted_json(Vec::from_array(["/secret/password", "/secret"]), 1000)),
+    );
+    testing::assert_eq(ok(snapshot.redacted_json(Vec::from_array([""]), 12)), "\"[REDACTED]\"");
+    kind(snapshot.redacted_json(Vec::from_array([""]), 11), config::ErrorKind::Limit);
+    kind(snapshot.redacted_json(Vec::from_array(["/missing"]), 1000), config::ErrorKind::Missing);
+    kind(
+        snapshot.redacted_json(Vec::from_array(["", "/missing"]), 1000),
+        config::ErrorKind::Missing,
+    );
+    kind(snapshot.redacted_json(Vec::from_array(["/items/01"]), 1000), config::ErrorKind::Path);
+    kind(snapshot.redacted_json(Vec::from_array(["/~2"]), 1000), config::ErrorKind::Path);
+    kind(snapshot.redacted_json(Vec::new(), -1), config::ErrorKind::InvalidOptions);
+    testing::assert_eq(ok(snapshot.redacted_json(Vec::new(), original.byte_len())), original);
+}
