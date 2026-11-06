@@ -103,6 +103,21 @@ fn charge(length: isize, limits: Limits, used: Ref[isize], origin: Origin) -> Re
     }
 }
 
+fn toml_numeric_separator(input: string, start: isize, index: isize) -> bool {
+    if index == 0 || index + 1 >= input.byte_len() {
+        return false
+    }
+    let hex = start + 2 <= index && input.byte_get(start) == b'0'
+        && input.byte_get(start + 1) == b'x';
+    for digit in[input.byte_get(index - 1), input.byte_get(index + 1)] {
+        if !(digit >= b'0' && digit <= b'9'
+            || hex && (digit >= b'a' && digit <= b'f' || digit >= b'A' && digit <= b'F')) {
+            return false
+        }
+    }
+    true
+}
+
 fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> Result[(), Error] {
     if format == Format::Toml {
         for index in 0..input.byte_len() {
@@ -134,6 +149,7 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
     let containers: Vec[(byte, bool)] = Vec::new();
     let mut nesting = 0;
     let mut dots = 0;
+    let mut token_start = 0;
     while index < input.byte_len() {
         let current = input.byte_get(index);
         if string_end {
@@ -192,6 +208,14 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 key_position = true;
             }
         } else {
+            if !(current >= b'0' && current <= b'9' || current >= b'a' && current <= b'z'
+                || current >= b'A' && current <= b'Z'
+                || current == b'_'
+                || current == b'+'
+                || current == b'-'
+                || current == b'.') {
+                token_start = index + 1;
+            }
             if current == 91 || current == 123 {
                 nesting += 1;
                 if nesting > limits.max_depth {
@@ -203,6 +227,19 @@ fn preflight(input: string, format: Format, limits: Limits, origin: Origin) -> R
                 nesting -= 1;
             }
             if format == Format::Toml {
+                // std::toml removes separators before parsing numbers, so reject
+                // malformed separators before they can silently change a value.
+                if !key_position && current == b'_'
+                    && !toml_numeric_separator(input, token_start, index) {
+                    return Result::Err(
+                        Error::new(
+                            ErrorKind::Parse,
+                            "",
+                            origin,
+                            "TOML numeric separator requires surrounding digits",
+                        ),
+                    )
+                }
                 if key_position && (current == b'=' || current == b']') {
                     let mut previous = index;
                     while previous > 0

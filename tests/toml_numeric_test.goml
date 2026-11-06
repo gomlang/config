@@ -1,0 +1,60 @@
+package tests;
+
+use ecosystem::config;
+use std::testing;
+
+#[test]
+fn toml_numeric_underscores_require_surrounding_digits() -> () {
+    for value in[
+        "1__2",
+        "1_",
+        "_1",
+        "+_1",
+        "-_1",
+        "0x_FF",
+        "0o_77",
+        "0b_11",
+        "1_.5",
+        "1._5",
+        "1_e2",
+        "1e_2",
+        "1e+_2",
+    ] {
+        for input in["value=" + value, "value=[" + value + "]", "value={item=" + value + "}"] {
+            let error = testing::expect_err(
+                config::Builder::new().with_source(config::Source::toml("numbers.toml", input)).build(),
+                "invalid numeric separator",
+            );
+            testing::assert_eq(error.kind, config::ErrorKind::Parse);
+            testing::assert_eq(error.origin.source, "numbers.toml");
+        }
+    }
+}
+
+#[test]
+fn toml_valid_numeric_separators_do_not_affect_keys_or_strings() -> () {
+    let snapshot = testing::expect_ok(
+        config::Builder::new().with_source(
+            config::Source::toml(
+                "numbers.toml",
+                "_key_=1_234\nhex=0xDE_AD\noctal=0o7_7\nbinary=0b1_0\nfloat=1_2.3_4e+1_0\ntext='1__2'\nitems=[1_0, { _key_=2_0 }]\n# 1__2\n",
+            ),
+        ).build(),
+        "valid numeric separators",
+    );
+    for (path, expected) in[
+        ("/_key_", 1234),
+        ("/hex", 57005),
+        ("/octal", 63),
+        ("/binary", 2),
+        ("/items/0", 10),
+        ("/items/1/_key_", 20),
+    ] {
+        let actual: isize = testing::expect_ok(snapshot.decode_at(path), "integer");
+        testing::assert_eq(actual, expected);
+    }
+    let number: f64 = testing::expect_ok(snapshot.decode_at("/float"), "float");
+    testing::assert_eq(number, 123400000000.0);
+    let actual: string = testing::expect_ok(snapshot.decode_at("/text"), "literal");
+    testing::assert_eq(actual, "1__2");
+}

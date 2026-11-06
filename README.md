@@ -183,6 +183,8 @@ delimiters require a root or inline-table assignment. String values require
 separators valid for their containing array or inline table; root values cannot
 continue after a comma.
 Dotted keys require a final component; an explicitly quoted empty component is valid.
+Numeric underscores must separate digits (including hexadecimal digits), so malformed
+values such as `1__2`, `0x_FF`, and `1e_2` fail instead of silently losing separators.
 Raw C0 control characters other than tab and line endings, and DEL, are rejected
 throughout TOML documents, including strings and comments. Line endings must be
 LF or CRLF. Supported string escapes can still represent control characters.
