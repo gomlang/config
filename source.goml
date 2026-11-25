@@ -12,6 +12,16 @@ use std::text;
 use std::toml;
 use std::unicode;
 
+struct DescriptorReader {
+    descriptor: fd::Fd,
+}
+
+impl Read for DescriptorReader {
+    fn read(self: DescriptorReader, buffer: MutSlice[byte]) -> Result[isize, io::Error] {
+        self.descriptor.read(buffer)
+    }
+}
+
 enum SourceKind {
     Document(Format, string),
     Dynamic(Format, () -> Result[string, Error]),
@@ -335,7 +345,7 @@ fn load_file(file: string, required: bool, limits: Limits, origin: Origin) -> Re
         ),
         Err(error) => return Result::Err(Error::new(ErrorKind::Io, "", origin, error.to_string())),
     };
-    let input = handle.read_to_string(limits.max_source_bytes);
+    let input = DescriptorReader { descriptor: handle }.read_to_string(limits.max_source_bytes);
     let close = handle.close();
     let input = input.map_err(|error| Error::new(ErrorKind::Io, "", origin, error.to_string()))?;
     close.map_err(|error| Error::new(ErrorKind::Io, "", origin, error.to_string()))?;
